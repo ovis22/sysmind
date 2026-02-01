@@ -4,58 +4,54 @@
 [![EIT Digital Ready](https://img.shields.io/badge/EIT_Digital-Aalto_%7C_KTH-orange)](https://www.eitdigital.eu/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**SysMind** is a "Platinum" grade autonomous Site Reliability Engineering (SRE) agent powered by **Gemini 3 Flash**. It goes beyond simple chatbot logic by implementing native **Function Calling** to manage, diagnose, and remediate Linux infrastructure in real-time.
+**SysMind** is a "Grand Prize" grade autonomous Site Reliability Engineering (SRE) agent. Powered by **Gemini 3 Flash**, it implements a full **Human-in-the-Loop** safety architecture to diagnose and remediate real-world infrastructure failures.
 
 ---
 
-## 🧠 Platinum Cognitive Architecture
+## 🧠 Cognitive Architecture: Visible Reasoning
 
-SysMind implements a sophisticated **OODA Loop** (Observe-Orient-Decide-Act) with native Gemini 3 capabilities:
+SysMind doesn't just execute; it thinks. By leveraging Gemini 3's **Native Function Calling** and **Chain-of-Thought (CoT)** enforcement:
 
-1.  **Observe**: Native exploration via `list_directory` (The Eyes) and `list_processes`.
-2.  **Orient**: Uses **Native System Instructions** to maintain a persistent SRE expert persona.
-3.  **Decide**: Generates high-precision **Function Calls** (no Regex parsing required).
-4.  **Act**: Executes commands via `docker-exec` with a **10-second safety fuse (Timeout)**.
+1.  **Observe**: Active exploration via `list_directory` (The Eyes) and `get_net_stats`.
+2.  **Orient**: Analyzes technical telemetry through a persistent **SRE Persona**.
+3.  **Decide**: Formulates a detailed **THOUGHT** reasoning trace before every action.
+4.  **Act**: Executes native tools with a **10-second safety fuse**.
 
-### Native Reasoning Trace
-Instead of predicting text, Gemini 3 outputs structured data that SysMind executes immediately:
-
-```python
-# Agent Insight: OOM error detected in syslog.
-# Action: Identify process using 'list_processes' 
-# Result: Native Function Call list_processes() triggered.
+### Visible Chain-of-Thought
+During operation, the agent provides full transparency into its decision-making:
+```text
+[BRAIN] Reasoning: High CPU detected in stress-ng-vm process. Investigating if this is the target villain.
+[ACTION] kill_process {'pid': 1234, 'force': True}
 ```
 
 ---
 
-## 🛡️ Industrial Resilience & Academic alignment
+## 🛡️ Industrial Grade Safety & Resilience
 
-SysMind is built for the **Gemini 3 Hackathon** while adhering to **EIT Digital (Aalto/KTH)** engineering standards:
-
--   **Visibility (The Eyes)**: Ability to explore `/var/log` or `/etc` autonomously to locate root causes.
--   **Execution Safety**: Every system call is protected by a **timeout** to prevent agent freezing in hanging environments.
--   **Terminal Stability**: Purged of non-ASCII characters to ensure 100% stable logs on all terminal encodings (inc. Windows).
--   **Contextual Security**: Case-insensitive guardrails prevent destructive actions (e.g., `rm` restricted to temp/logs).
+-   **Human-in-the-Loop (HITL)**: Crucial for production safety. Every destructive action (`kill`, `rm`, `restart`) requires **Interactive Human Approval**.
+-   **Execution Verification**: All system calls are protected by timeouts to prevent "freezing" in erratic Docker environments.
+-   **Terminal Stability**: Purged of non-ASCII characters for 100% stable logs on all terminal encodings.
+-   **Surgical Diagnosis**: Utilizes `grep` with context and `systemctl` status checks for a professional, non-destructive approach.
 
 ---
 
-## 🚀 Getting Started (Hollywood Demo)
+## 🚀 The Grand Prize Demo (Real Stress)
 
-Experience the full power of SysMind in a simulated "Chaos Engineering" scenario:
+SysMind is tested against **real resource pressure**, not just script simulations:
 
-1.  **Build & Run Environment**:
+1.  **Prepare**:
     ```bash
     docker build -t sysmind-target ./target-node
     docker run -d --name sysmind-target sysmind-target
     ```
-2.  **Inject Chaos**:
+2.  **Chaos Injection (Real Load)**:
     ```bash
-    python chaos_injector.py  # Injects a rogue process & fake OOM error
+    python chaos_injector.py  # Launches real stress-ng load (80% Memory)
     ```
-3.  **Activate SysMind**:
+3.  **Autonomous Remediation**:
     ```bash
-    python run_agent.py  # Watch the Agent diagnose and kill the villain
+    python run_agent.py  # Watch the Agent diagnose and wait for your approval to repair
     ```
 
 ---
-*Created for the Gemini 3 Hackathon. Bridging the gap between Advanced AI Reasoning and Linux System Stability.*
+*Created for the Gemini 3 Hackathon. Bridging the gap between Advanced AI Autonomy and Production-Grade Safety.*
