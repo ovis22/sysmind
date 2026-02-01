@@ -50,8 +50,8 @@ class SysMindAgent:
             self.client = None
         else:
             self.client = genai.Client(api_key=api_key)
-            # Using the latest model available under the API
-            self.model_id = "gemini-2.0-flash" 
+            # Using Gemini 3 Flash for the Hackathon
+            self.model_id = "gemini-3-flash-preview" 
 
     def connect(self):
         """Verifies target accessibility"""
