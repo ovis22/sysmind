@@ -114,6 +114,7 @@ class SysMindAgent:
         if not self.client:
             return '{"thought": "API Client not initialized.", "tool": "DONE"}'
         
+        print("🧠 Thinking...")
         response = self.client.models.generate_content(
             model=self.model_id,
             contents=prompt

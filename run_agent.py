@@ -19,7 +19,7 @@ def main():
         agent.connect()
         
         # Start the Brain
-        objective = "Check the running processes and identify the one using the most memory."
+        objective = "Logs show occasional errors. Analyze /var/log/syslog and check running processes to find the root cause."
         agent.ooda_loop(objective)
             
     except Exception as e:
