@@ -1,19 +1,12 @@
-import json
 import os
 import subprocess
 import time
 import functools
-import re
 from google import genai
-from dotenv import load_dotenv
-
-# Import strategy and tools
-from ..strategies.base import OSStrategy
-from ..strategies.ubuntu import UbuntuStrategy
-from ..tools.process import ProcessTools
-from ..tools.files import FileTools
-
-load_dotenv()
+from google.genai import types
+from backend.strategies.ubuntu import UbuntuStrategy
+from backend.tools.process import ProcessTools
+from backend.tools.files import FileTools
 
 def exponential_backoff(max_retries=3):
     """Decorator for retrying API calls with exponential wait times."""
@@ -27,7 +20,7 @@ def exponential_backoff(max_retries=3):
                 except Exception as e:
                     if "429" in str(e):
                         wait_time = 2 ** retries
-                        print(f"⚠️ Quota exceeded (429). Backing off for {wait_time}s...")
+                        print(f"[RETRY] Quota exceeded (429). Backing off for {wait_time}s...")
                         time.sleep(wait_time)
                         retries += 1
                     else:
@@ -37,16 +30,30 @@ def exponential_backoff(max_retries=3):
     return decorator
 
 class SysMindAgent:
+    """
+    SysMind: An autonomous SRE Agent for Linux Systems. (Platinum Version)
+    Powered by Gemini 3 Flash.
+    """
+    
     def __init__(self, target_name: str = "sysmind-target"):
         self.target_name = target_name
-        self.strategy: OSStrategy = None
-        self.process_tools: ProcessTools = None
-        self.file_tools: FileTools = None
+        self.strategy = None
+        self.process_tools = None
+        self.file_tools = None
         
+        # Identity Policy
+        self.identity = (
+            "You are SysMind, an elite Autonomous SRE Agent. "
+            "Your objective is to diagnose and repair Linux systems with precision. "
+            "You have access to native tools. Use them logically. "
+            "Always verify the state of the system before and after actions. "
+            "If you find a rogue process, kill it. If a log is missing, explore the directory."
+        )
+
         # Brain Check
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            print("⚠️ CRITICAL: GEMINI_API_KEY not found in .env")
+            print("[CRITICAL] GEMINI_API_KEY not found in .env")
             self.client = None
         else:
             self.client = genai.Client(api_key=api_key)
@@ -54,19 +61,22 @@ class SysMindAgent:
             self.model_id = "gemini-3-flash-preview" 
 
     def connect(self):
-        """Verifies target accessibility"""
-        print(f"🔌 Connecting to target container: '{self.target_name}'...")
-        # Verify if the container is running
+        """Verifies target accessibility with safety timeout."""
+        print(f"[CONN] Connecting to target container: '{self.target_name}'...")
         try:
+            # Added timeout=10 to prevent hanging during demo
             check = subprocess.run(
                 ["docker", "inspect", "-f", "{{.State.Running}}", self.target_name],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
             if "true" not in check.stdout.lower():
-                print(f"❌ Target '{self.target_name}' is not running or doesn't exist.")
+                print(f"[FAIL] Target '{self.target_name}' is not running.")
                 return False
+        except subprocess.TimeoutExpired:
+             print("[FAIL] Connection timed out (Docker unresponsive).")
+             return False
         except FileNotFoundError:
-             print("❌ Docker CLI not found.")
+             print("[FAIL] Docker CLI not found.")
              return False
 
         self._detect_os()
@@ -74,193 +84,217 @@ class SysMindAgent:
 
     def _detect_os(self):
         """Self-Discovery Phase"""
-        print("🕵️ Fingerprinting OS...")
+        print("[OS] Fingerprinting OS...")
         os_info = self._execute("cat /etc/os-release").lower()
         if "ubuntu" in os_info or "debian" in os_info:
-            print("✅ Detected: Ubuntu/Debian Ecosystem.")
+            print("[OS] Detected: Ubuntu/Debian Ecosystem.")
             self.strategy = UbuntuStrategy()
-        elif "alpine" in os_info:
-            print("✅ Detected: Alpine Linux.")
-            # self.strategy = AlpineStrategy() # Placeholder
-            self.strategy = UbuntuStrategy() # Fallback
         else:
-            print(f"⚠️ Unknown OS. Defaulting to UbuntuStrategy. Raw: {os_info[:30]}...")
+            print(f"[OS] Defaulting to UbuntuStrategy.")
             self.strategy = UbuntuStrategy()
             
         self.process_tools = ProcessTools(self.strategy)
         self.file_tools = FileTools()
 
     def _execute(self, command: str) -> str:
-        """Executes command directly via docker exec with sanitization."""
+        """Executes command via docker exec with safety timeout."""
         env = os.environ.copy()
-        env["MSYS_NO_PATHCONV"] = "1" # Fix for Windows Git Bash
+        env["MSYS_NO_PATHCONV"] = "1"
         
         full_cmd = ["docker", "exec", self.target_name, "bash", "-c", command]
         try:
-            result = subprocess.run(full_cmd, capture_output=True, text=True, env=env)
+            # Added timeout=10 to prevent hanging during execution
+            result = subprocess.run(full_cmd, capture_output=True, text=True, env=env, timeout=10)
             if result.returncode != 0:
-                # Return stderr so the agent knows what went wrong
-                return f"Execution Error (Code {result.returncode}): {result.stderr.strip() or result.stdout.strip()}"
+                return f"Error (Code {result.returncode}): {result.stderr.strip() or result.stdout.strip()}"
             return result.stdout
+        except subprocess.TimeoutExpired:
+            return "Error: Execution timed out (10s limit exceeded)."
         except Exception as e:
-            return f"Internal Agent Error: {str(e)}"
+            return f"Error: {str(e)}"
 
     def _safety_check(self, command: str) -> bool:
-        """
-        SAFETY GUARDRAILS: Blocks destructive commands.
-        Implementation of 'Do No Harm' protocol.
-        """
-        dangerous_patterns = [
-            "rm -rf /", "mkfs", "dd if=", ":(){:|:&};:", # Fork bomb
-            "reboot", "shutdown", "init 0", 
-            "iptables -F", "iptables -P INPUT DROP", # Network suicide
-            "chmod -R 777 /", "chown -R"
-        ]
-        
-        # Exception for kill (needed for remediation)
-        # But we block kill on system processes (simple heuristic)
-        
+        """Context-Aware Safety Guardrails."""
         cmd_lower = command.lower()
-        if any(pattern in cmd_lower for pattern in dangerous_patterns):
-            print(f"\n🛡️ SAFETY INTERVENTION: Blocked dangerous command: '{command}'")
+        
+        # Hard Blacklist
+        critical = ["mkfs", "dd if=", ":(){:|:&};:", "reboot", "shutdown", "init 0"]
+        if any(p in cmd_lower for p in critical):
+            print(f"\n[SAFETY] Blocked destructive system command: '{command}'")
             return False
-            
+
+        # Contextual 'rm'
+        if "rm " in cmd_lower:
+            if not ("/tmp/" in cmd_lower or ".log" in cmd_lower):
+                print(f"\n[SAFETY] 'rm' restricted to /tmp/ or *.log. Blocked: '{command}'")
+                return False
+            if "rm -rf /" in cmd_lower or cmd_lower.strip().endswith("/"):
+                print(f"\n[SAFETY] Blocked potential root-level deletion.")
+                return False
+
         return True
 
-    def run_tool(self, tool_name: str, **kwargs) -> str:
-        """The 'Hand' of the Agent."""
-        command = None
-        try:
-            if tool_name == "list_processes":
-                command = self.process_tools.list_processes_command()
-            elif tool_name == "kill_process":
-                # Protection against missing arguments
-                pid = kwargs.get("pid")
-                if not pid: return "Error: PID required."
-                command = self.process_tools.kill_process_command(pid, kwargs.get("force", False))
-            elif tool_name == "read_log":
-                path = kwargs.get("path", "/var/log/syslog")
-                command = self.file_tools.read_file_tail_command(path, kwargs.get("lines", 20))
-            elif tool_name == "check_disk":
-                command = self.file_tools.check_disk_space_command()
-            else:
-                return f"ERROR: Unknown tool '{tool_name}'."
-                
-            if command:
-                if self._safety_check(command):
-                    return self._execute(command)
-                else:
-                    return "ERROR: Command blocked by Safety Guardrails."
-        except Exception as e:
-            return f"Tool Execution Error: {e}"
-        
-        return "ERROR: No command generated."
+    def _get_tools_config(self):
+        """Definitions for Gemini 3 Native Tool Use (Platinum)."""
+        return [
+            types.FunctionDeclaration(
+                name="list_processes",
+                description="Check running processes for resource usage.",
+                parameters=types.Schema(type="OBJECT", properties={})
+            ),
+            types.FunctionDeclaration(
+                name="list_directory",
+                description="List contents of a directory to explore the system (The Eyes).",
+                parameters=types.Schema(
+                    type="OBJECT",
+                    properties={
+                        "path": types.Schema(type="STRING", description="Directory path (default /).")
+                    }
+                )
+            ),
+            types.FunctionDeclaration(
+                name="kill_process",
+                description="Terminate a process by its PID.",
+                parameters=types.Schema(
+                    type="OBJECT",
+                    properties={
+                        "pid": types.Schema(type="INTEGER", description="The Process ID to kill."),
+                        "force": types.Schema(type="BOOLEAN", description="Forcefully terminate.")
+                    },
+                    required=["pid"]
+                )
+            ),
+            types.FunctionDeclaration(
+                name="read_log",
+                description="Examine system or application logs.",
+                parameters=types.Schema(
+                    type="OBJECT",
+                    properties={
+                        "path": types.Schema(type="STRING", description="Log path."),
+                        "lines": types.Schema(type="INTEGER", description="Number of lines.")
+                    },
+                    required=["path"]
+                )
+            ),
+            types.FunctionDeclaration(
+                name="mission_complete",
+                description="Finalize mission with a summary.",
+                parameters=types.Schema(
+                    type="OBJECT",
+                    properties={"summary": types.Schema(type="STRING")},
+                    required=["summary"]
+                )
+            )
+        ]
 
-    def _clean_json(self, raw_text: str) -> str:
-        """
-        HARDENING: Robust JSON extraction from LLM chatter.
-        Removes Markdown blocks (```json ... ```) and finds the first { ... }.
-        """
-        # 1. Remove markdown
-        text = re.sub(r'```json\s*', '', raw_text)
-        text = re.sub(r'```', '', text)
-        
-        # 2. Find the first JSON object
-        match = re.search(r'(\{.*\})', text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        
-        # 3. If no braces found, return original (might be a simple error)
-        return raw_text.strip()
+    def run_tool(self, name: str, **kwargs) -> str:
+        """Routes tool calls to actual system implementations."""
+        if name == "list_processes":
+            cmd = self.process_tools.get_list_command()
+            return self._execute(cmd)
+            
+        elif name == "list_directory":
+            path = kwargs.get("path", "/")
+            # Use -F to distinguish file types visually for the model
+            return self._execute(f"ls -F {path}")
+            
+        elif name == "kill_process":
+            pid = kwargs.get("pid")
+            force = kwargs.get("force", False)
+            if pid:
+                cmd = self.process_tools.get_kill_command(pid, force)
+                if self._safety_check(cmd):
+                    return self._execute(cmd)
+                return "Safety Violation: Command blocked."
+            return "Error: Missing PID."
+
+        elif name == "read_log":
+            path = kwargs.get("path")
+            lines = kwargs.get("lines", 20)
+            if path:
+                cmd = self.file_tools.get_read_command(path, lines)
+                return self._execute(cmd)
+            return "Error: Missing path."
+
+        return f"Error: Tool '{name}' not implemented."
 
     @exponential_backoff(max_retries=3)
     def _think(self, prompt: str):
-        """Internal method to call Gemini API."""
-        if not self.client:
-            return '{"thought": "API Client offline.", "tool": "DONE"}'
+        """Native Tool Calling with Platinum Configuration."""
+        if not self.client: return "ERROR", "Offline"
         
-        print("🧠 Processing...", end="\r")
+        print("[BRAIN] Processing...")
+        tools = [types.Tool(function_declarations=self._get_tools_config())]
+        
+        # Gemini 3 Platinum: Using native system_instruction for persona
         response = self.client.models.generate_content(
             model=self.model_id,
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=tools,
+                system_instruction=self.identity
+            )
         )
-        print("🧠 Insight generated.")
+        print("[BRAIN] Insight generated.")
         
-        return self._clean_json(response.text)
+        if not response.candidates or not response.candidates[0].content.parts:
+            return "THOUGHT", "The model returned an empty response (possible safety trigger)."
+
+        for part in response.candidates[0].content.parts:
+            if part.function_call:
+                # Convert Protobuf/MapComposite to DICT for Python
+                args = {}
+                if part.function_call.args:
+                    args = {k: v for k, v in part.function_call.args.items()}
+                return part.function_call.name, args
+        
+        return "THOUGHT", response.candidates[0].content.parts[0].text
 
     def ooda_loop(self, objective: str):
-        """
-        The core OODA Cycle implementation (Observe-Orient-Decide-Act).
-        """
-        print(f"\n🔵 SYS_MIND AGENT ACTIVATED\n🎯 OBJECTIVE: {objective}")
+        """OODA Loop with Persistence and Robustness."""
+        print(f"\n[AGENT] SYS_MIND ACTIVATED (PLATINUM)\n[TARGET] OBJECTIVE: {objective}")
         print("="*60)
         
         history = []
-        max_steps = 8 # Increased for more complex tasks
+        max_steps = 10
         
         for step in range(max_steps):
             print(f"\n[Cycle {step + 1}/{max_steps}]")
             
-            # Prompt engineering: Enforcing JSON format
-            prompt = f"""
-            SYSTEM: You are SysMind, an Autonomous Site Reliability Engineer (SRE).
-            TARGET OS: Ubuntu/Debian (Containerized).
-            
-            OBJECTIVE: {objective}
-            
-            AVAILABLE TOOLS:
-            - list_processes (args: None) -> Check CPU/RAM hogs.
-            - kill_process (args: pid: int, force: bool) -> Remediate stuck processes.
-            - read_log (args: path: str, lines: int) -> Analyze /var/log/syslog or app logs.
-            - check_disk (args: None) -> Check storage.
-            - DONE (args: None) -> Mission complete.
-            
-            CONTEXT (HISTORY):
-            {json.dumps(history, indent=2)}
-            
-            INSTRUCTIONS:
-            1. Analyze the history.
-            2. Decide the next step using OODA loop (Observe -> Orient -> Decide).
-            3. OUTPUT ONLY VALID JSON. No intro, no outro.
-            
-            JSON FORMAT:
-            {{
-                "thought": "Short reasoning: I see X, so I will do Y...",
-                "tool": "tool_name",
-                "args": {{}}
-            }}
-            """
-            
+            # Reconstruct stateless context
+            context = f"OBJECTIVE: {objective}\n\nHISTORY:\n"
+            for h in history:
+                context += f"- Step {h['step']}: {h['tool']}({h['args']}) -> {h['result']}\n"
+
             try:
-                decision_text = self._think(prompt)
-                decision = json.loads(decision_text)
+                tool_name, tool_args = self._think(context)
                 
-                thought = decision.get("thought", "Thinking...")
-                tool = decision.get("tool", "DONE")
-                args = decision.get("args", {})
-                
-                print(f"🤔 Thought: {thought}")
-                
-                if tool == "DONE":
-                    print("\n🏆 MISSION ACCOMPLISHED.")
+                # Persistence Fix: Save 'THOUGHT' to history to avoid loops
+                if tool_name == "THOUGHT":
+                    print(f"[BRAIN] Thought: {tool_args}")
+                    history.append({
+                        "step": step + 1,
+                        "tool": "THOUGHT",
+                        "args": {},
+                        "result": tool_args
+                    })
+                    continue
+
+                if tool_name == "mission_complete":
+                    print(f"\n[SUCCESS] MISSION ACCOMPLISHED: {tool_args.get('summary')}")
                     break
                     
-                print(f"🛠️  Action: {tool} ({args})")
-                result = self.run_tool(tool, **args)
+                print(f"[ACTION] {tool_name} {tool_args}")
+                result = self.run_tool(tool_name, **tool_args)
                 
-                # Truncate result for history to save tokens
-                history_result = result[:500] if result else "No output."
-                print(f"📄 Output: {history_result[:100]}...")
-                
+                print(f"[OUTPUT] {result[:100]}...")
                 history.append({
                     "step": step + 1,
-                    "thought": thought,
-                    "tool": tool,
-                    "args": args,
-                    "result": history_result
+                    "tool": tool_name,
+                    "args": tool_args,
+                    "result": result[:500]
                 })
                 
             except Exception as e:
-                print(f"💥 Brain Error: {e}")
-                time.sleep(2)
-                continue
+                print(f"[ERROR] Brain Failure: {e}")
+                time.sleep(1)

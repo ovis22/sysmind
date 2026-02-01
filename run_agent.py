@@ -10,7 +10,7 @@ sys.path.append(current_dir)
 from backend.core.agent import SysMindAgent
 
 def main():
-    print("\n🚀 SysMind Agent: Activation Sequence")
+    print("\n[START] SysMind Agent: Activation Sequence")
     print("---------------------------------------")
     
     load_dotenv()
@@ -24,10 +24,10 @@ def main():
             objective = "Logs show occasional errors. Analyze /var/log/syslog and check running processes to find the root cause."
             agent.ooda_loop(objective)
         else:
-            print("❌ Aborting: Could not connect to target.")
+            print("[FAIL] Aborting: Could not connect to target.")
             
     except Exception as e:
-        print(f"\n❌ FATAL ERROR: {e}")
+        print(f"\n[FATAL ERROR] {e}")
 
 if __name__ == "__main__":
     main()

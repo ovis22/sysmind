@@ -1,0 +1,5 @@
+
+[START] SysMind Agent: Activation Sequence
+---------------------------------------
+
+[FATAL ERROR] 'charmap' codec can't encode character '\U0001f50c' in position 0: character maps to <undefined>

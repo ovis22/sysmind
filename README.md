@@ -4,7 +4,7 @@
 [![EIT Digital Ready](https://img.shields.io/badge/EIT_Digital-Aalto_%7C_KTH-orange)](https://www.eitdigital.eu/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**SysMind** is an autonomous Site Reliability Engineering (SRE) agent powered by **Gemini 2.0 Flash**. It doesn't just answer questions; it actively manages, diagnoses, and remediates Linux infrastructure in real-time using an intelligent **OODA Loop**.
+**SysMind** is an autonomous Site Reliability Engineering (SRE) agent powered by **Gemini 3 Flash**. It doesn't just answer questions; it actively manages, diagnoses, and remediates Linux infrastructure in real-time using an intelligent **OODA Loop**.
 
 ---
 
@@ -13,7 +13,7 @@
 SysMind operates on the **Observe-Orient-Decide-Act (OODA)** cycle:
 
 1.  **Observe**: Captures raw system telemetry.
-2.  **Orient**: Uses Gemini 2.0 Flash to contextualize anomalies.
+2.  **Orient**: Uses Gemini 3 Flash to contextualize anomalies.
 3.  **Decide**: Formulates a remediation plan.
 4.  **Act**: Executes commands via secure transport.
 
