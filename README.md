@@ -54,4 +54,18 @@ SysMind is tested against **real resource pressure**, not just script simulation
     ```
 
 ---
+
+## ⚙️ Technical Specifications
+
+### System Requirements
+*   **Operating System**: Linux (for Target), Windows/Linux/macOS (for Agent).
+*   **Memory**: Minimum **2GB RAM** recommended for the target container (to safely handle `stress-ng` chaos scenarios).
+*   **API**: Valid `GEMINI_API_KEY` with access to Gemini 3 Flash.
+
+### Security Architecture (Enterprise Grade)
+*   **Shell Injection Immunity**: Every diagnostic tool (`grep`, `tail`, `ls`, `printf`) uses `shlex.quote` on all user-controlled inputs. This prevents the Agent (or a malicious prompt) from hijacking the system shell.
+*   **Human-in-the-Loop (HITL)**: Destructive actions are gated by interactive human approval.
+*   **Privilege Disclosure**: While the demo agent uses `sudo` for service management within the isolated Docker container, a production deployment should follow the **Principle of Least Privilege (PoLP)** by granting specific CAP_SYS_PTRACE or tailored sudoers permissions.
+
+---
 *Created for the Gemini 3 Hackathon. Bridging the gap between Advanced AI Autonomy and Production-Grade Safety.*
