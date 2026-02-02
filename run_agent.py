@@ -24,12 +24,8 @@ def main():
         agent = SysMindAgent(target_name="sysmind-target")
         
         if agent.connect():
-            # Hollywood Scenario: Realistic Remediation
-            objective = (
-                "CRITICAL ALERT: System is suffering from extreme memory pressure. "
-                "1. Investigate the cause using system diagnostic tools (list_processes, grep). "
-                "2. Identify and terminate the rogue process to restore stability."
-            )
+            # QA KROK 1: Files & Grep Precision
+            objective = "Find the secret error message in /tmp/app.log and report exactly what it is."
             agent.ooda_loop(objective)
         else:
             print("[FAIL] Aborting: Target environment unreachable.")
