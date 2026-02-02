@@ -7,6 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
+from rich import print
 from backend.core.agent import SysMindAgent
 
 def main():
@@ -14,7 +15,13 @@ def main():
     SysMind Agent Runner (Platinum Version).
     Standard entry point for automated SRE remediation.
     """
-    print("\n[START] SysMind Agent: Activation Sequence")
+    import sys
+    import io
+    # Grand Prize Hardening: Force UTF-8 for Windows Terminal stability
+    if sys.platform == "win32":
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+    print("\n[bold blue]SYS_MIND ACTIVATED[/bold blue] (TITANIUM EDITION)")
     print("-" * 50)
     
     load_dotenv()

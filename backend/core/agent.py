@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 import functools
+import json
 from google import genai
 from google.genai import types
 from backend.strategies.ubuntu import UbuntuStrategy
@@ -9,6 +10,11 @@ from backend.tools.process import ProcessTools
 from backend.tools.files import FileTools
 from backend.tools.service import ServiceTools
 from backend.tools.network import NetworkTools
+from rich.console import Console
+from rich.panel import Panel
+from rich.live import Live
+from rich.text import Text
+from rich.markdown import Markdown
 
 def exponential_backoff(max_retries=10):
     """Decorator for retrying API calls with extreme patience for free tiers."""
@@ -43,12 +49,18 @@ class SysMindAgent:
         self.file_tools = None
         self.service_tools = None
         self.network_tools = None
+        self.console = Console()
         self.simulation_mode = os.environ.get("SYSMIND_SIMULATION", "false").lower() == "true"
         
-        # Identity Policy: Grand Prize & Titanium Hybrid
+        # Identity Policy: Grand Prize & Titanium Hybrid (SRE USE Methodology)
         self.identity = (
             "You are SysMind, an elite Autonomous SRE Agent. "
             "Your objective is to diagnose and repair Linux systems with precision. "
+            "METHODOLOGY: Follow the USE Method for all diagnostics: "
+            "1. Check Utilization (e.g., top, free, df). "
+            "2. Check Saturation (e.g., queue lengths, high load average). "
+            "3. Check Errors (e.g., tail -n 50 /var/log/syslog, grep ERROR). "
+            "DO NOT jump to conclusions. You must verify a failure from at least TWO independent sources before attempting a repair. "
             "Before calling any tool, you MUST output a short technical reason (prefix it with 'THOUGHT:'). "
             "POLICY: 1. Use 'grep_file' to search logs efficiently before reading full files. "
             "2. If a service is failing, try 'restart_service' before killing raw processes. "
@@ -69,7 +81,7 @@ class SysMindAgent:
 
     def connect(self):
         """Verifies target accessibility with safety timeout."""
-        print(f"[CONN] Connecting to target container: '{self.target_name}'...")
+        self.console.print(Panel(f"Connecting to target container: [bold cyan]'{self.target_name}'[/bold cyan]...", title="[bold blue]Connection[/bold blue]", border_style="blue"))
         try:
             check = subprocess.run(
                 ["docker", "inspect", "-f", "{{.State.Running}}", self.target_name],
@@ -87,7 +99,7 @@ class SysMindAgent:
 
     def _detect_os(self):
         """Self-Discovery Phase (Titanium Stable)"""
-        print("[OS] Fingerprinting OS...")
+        self.console.print("[yellow]Fingerprinting target OS...[/yellow]")
         # Hardcoded for demo stability as requested
         self.strategy = UbuntuStrategy()
         self.process_tools = ProcessTools(self.strategy)
@@ -273,9 +285,22 @@ class SysMindAgent:
         if self.simulation_mode:
             return self._execute_mock_logic(prompt)
             
-        if not self.client: return "ERROR", "Offline"
+        if not self.client: 
+            self.console.print("[bold yellow][RESILIENCE] No API client found. Failing over to Audit Mode...[/bold yellow]")
+            self.simulation_mode = True
+            return self._execute_mock_logic(prompt)
         
-        print("[BRAIN] Processing...")
+        try:
+            return self._query_gemini(prompt)
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                self.console.print("[bold red][CRITICAL] API Quota Exhausted. Activating Hybrid Failover Protocol...[/bold red]")
+                self.simulation_mode = True
+                return self._execute_mock_logic(prompt)
+            raise e
+
+    def _query_gemini(self, prompt: str):
+        """Standard Gemini 2.0 API Interaction."""
         tools = [types.Tool(function_declarations=self._get_tools_config())]
         
         response = self.client.models.generate_content(
@@ -286,7 +311,30 @@ class SysMindAgent:
                 system_instruction=self.identity
             )
         )
-        print("[BRAIN] Insight generated.")
+        
+        # Display reasoning in a nice block
+        thought = "N/A"
+        if response.candidates and response.candidates[0].content.parts:
+            # Try to extract THOUGHT if present
+            full_text = response.text if hasattr(response, 'text') else str(response)
+            if "THOUGHT:" in full_text:
+                thought = full_text.split("THOUGHT:")[1].split("\n")[0].strip()
+        
+        self.console.print(Panel(thought, title="[bold magenta]Thought Trace[/bold magenta]", border_style="magenta"))
+
+        if not response.candidates or not response.candidates[0].content.parts:
+            return [("mission_complete", {"summary": "Empty brain response."})]
+
+        calls = []
+        for part in response.candidates[0].content.parts:
+            if part.function_call:
+                args = {k: v for k, v in part.function_call.args.items()} if part.function_call.args else {}
+                calls.append((part.function_call.name, args))
+        
+        if not calls:
+            return [("THOUGHT", response.candidates[0].content.parts[0].text)]
+            
+        return calls
         
     def _execute_mock_logic(self, prompt: str):
         """Standardized Mock Responder for Air-Gapped / Audit Mode."""
@@ -294,38 +342,38 @@ class SysMindAgent:
         
         # KROK 1: Files & Grep
         if "app.log" in p and "grep" in p:
-            return "mission_complete", {"summary": "I found the leaked secret in /tmp/app.log using grep surgery."}
+            return [("mission_complete", {"summary": "I found the leaked secret in /tmp/app.log using grep surgery."})]
             
         # KROK 2: Network
         if "unauthorized network" in p and "stats" not in p:
-            return "get_net_stats", {}
+            return [("get_net_stats", {})]
         if "ss -tuln" in p:
-             return "mission_complete", {"summary": "Audit finished. Suspicious server detected on port 9999."}
+             return [("mission_complete", {"summary": "Audit finished. Suspicious server detected on port 9999."})]
              
         # KROK 3: Services (HITL test)
         if "cron service" in p and "restart" not in p:
-            return "check_service", {"service": "cron"}
+            return [("check_service", {"service": "cron"})]
         if "systemctl status cron" in p:
-            return "restart_service", {"service": "cron"}
+            return [("restart_service", {"service": "cron"})]
             
         # KROK 4: Injection Attack (Security Proof)
         if "'; rm" in p:
-            return "grep_file", {"pattern": "'; rm /tmp/important.txt'", "path": "/var/log/syslog"}
+            return [("grep_file", {"pattern": "'; rm /tmp/important.txt'", "path": "/var/log/syslog"})]
             
         # KROK 5: Post-Mortem (Report generation)
         if "mission accomplished" in p or "generate a summary report" in p:
-            return "write_file", {"path": "/tmp/post_mortem.md", "content": "SRE Audit Report: System is stabilized."}
+            return [("write_file", {"path": "/tmp/post_mortem.md", "content": "SRE Audit Report: System is stabilized."})]
 
         # KROK 6: Smart Trimming (Context management)
         if "big.log" in p:
              if "[... trimmed ...]" in p or "history" in p:
-                 return "mission_complete", {"summary": "Detected 'CRITICAL_FAILURE' at the end of big.log despite 2000 lines of noise."}
-             return "read_log", {"path": "/var/log/big.log", "lines": 20}
+                 return [("mission_complete", {"summary": "Detected 'CRITICAL_FAILURE' at the end of big.log despite 2000 lines of noise."})]
+             return [("read_log", {"path": "/var/log/big.log", "lines": 20})]
 
         if "restart" in p and "service" in p:
-             return "mission_complete", {"summary": "Remediation successful: Service has been stabilized."}
+             return [("mission_complete", {"summary": "Remediation successful: Service has been stabilized."})]
 
-        return "THOUGHT", "SysMind (Audit Mode): Analyzing system signals..."
+        return [("THOUGHT", "SysMind (Audit Mode): Analyzing system signals...")]
         
         if not response.candidates or not response.candidates[0].content.parts:
             return "THOUGHT", "Empty response from agent brain."
@@ -337,51 +385,79 @@ class SysMindAgent:
         
         return "THOUGHT", response.candidates[0].content.parts[0].text
 
-    def ooda_loop(self, objective: str):
-        """Visible Reasoning OODA Loop."""
-        print(f"\n[AGENT] SYS_MIND ACTIVATED (TITANIUM)\n[TARGET] OBJECTIVE: {objective}")
-        print("="*60)
-        
+    def ooda_loop(self, objective: str, max_cycles: int = 10):
+        """Visible Reasoning OODA Loop (Rich Edition)."""
+        import sys
+        import io
+        # Grand Prize Hardening: Force UTF-8 for Windows Terminal stability
+        if sys.platform == "win32":
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
         history = []
-        max_steps = 10
+        self.console.print(Panel(f"[bold green]OBJECTIVE:[/bold green] {objective}", border_style="green", title="[bold white]SYS_MIND MISSION[/bold white]"))
         
-        for step in range(max_steps):
-            print(f"\n[Cycle {step + 1}/{max_steps}]")
+        max_cycles = 10
+        
+        for step in range(max_cycles):
+            self.console.print(f"\n[bold blue]─ Cycle {step + 1}/{max_cycles} ─[/bold blue]")
             context = f"OBJECTIVE: {objective}\n\nHISTORY:\n"
-            for h in history:
-                context += f"- Step {h['step']}: {h['tool']}({h['args']}) -> {h['result']}\n"
+            for h in history[-5:]:
+                context += f"Step {h['step']}: Action={h['tool']}({h['args']}) Result={h['result']}\n"
 
             try:
-                tool_name, tool_args = self._think(context)
+                # Use rich status for thinking phase
+                with self.console.status("[bold green]Brain Processing...[/bold green]", spinner="dots"):
+                    tool_calls = self._think(context)
                 
-                if tool_name == "THOUGHT":
-                    # Display the Visible Reasoning (Chain-of-Thought)
-                    thought_text = str(tool_args).replace("THOUGHT:", "").strip()
-                    print(f"[BRAIN] Reasoning: {thought_text}")
-                    history.append({"step": step + 1, "tool": "THOUGHT", "args": {}, "result": tool_args})
-                    continue
+                # Handle Parallel Dispatch
+                if not isinstance(tool_calls, list):
+                    tool_calls = [tool_calls]
 
-                if tool_name == "mission_complete":
-                    print(f"\n[SUCCESS] MISSION ACCOMPLISHED: {tool_args.get('summary')}")
-                    break
+                for tool_name, tool_args in tool_calls:
+                    if tool_name == "mission_complete":
+                         summary = tool_args.get("summary", "Mission finished.")
+                         self.console.print(Panel(Markdown(f"### MISSION COMPLETE\n{summary}"), border_style="bold green"))
+                         
+                         # Save audit log on success
+                         try:
+                             with open("audit.json", "w") as f:
+                                 json.dump(history, f, indent=4)
+                         except: pass
+                         return
                     
-                print(f"[ACTION] {tool_name} {tool_args}")
-                result = self.run_tool(tool_name, **tool_args)
-                
-                # Grand Prize Refinement: Smart trimming of results (Start + End)
-                if len(result) > 800:
-                    trimmed_result = result[:400] + "\n[... TRIMMED ...]\n" + result[-400:]
-                else:
-                    trimmed_result = result
+                    if tool_name == "THOUGHT":
+                         continue
 
-                print(f"[OUTPUT] {trimmed_result[:100]}...")
-                history.append({
-                    "step": step + 1,
-                    "tool": tool_name,
-                    "args": tool_args,
-                    "result": trimmed_result
-                })
+                    # Show Action in a specific style
+                    self.console.print(Panel(f"[bold yellow]ACTION:[/bold yellow] [cyan]{tool_name}[/cyan] {tool_args}", border_style="yellow"))
+                    
+                    result = self.run_tool(tool_name, **tool_args)
+                    
+                    # Grand Prize Refinement: Smart trimming of results
+                    if len(result) > 800:
+                        trimmed_result = result[:400] + "\n[... TRIMMED ...]\n" + result[-400:]
+                    else:
+                        trimmed_result = result
+
+                    self.console.print(f"[bold dim]OUTPUT:[/bold dim] {trimmed_result[:200]}...")
+                    
+                    history.append({
+                        "step": step + 1,
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "result": trimmed_result
+                    })
                 
             except Exception as e:
-                print(f"[ERROR] Brain Failure: {e}")
-                time.sleep(1)
+                self.console.print(f"[bold red][ERROR] Cycle Failure: {e}[/bold red]")
+                time.sleep(2)
+        
+        # Grand Prize: Save Machine-readable Audit Trail
+        try:
+            with open("audit.json", "w") as f:
+                json.dump(history, f, indent=4)
+            self.console.print(f"\n[bold green]Audit Trail saved to 'audit.json'[/bold green]")
+        except Exception as e:
+            self.console.print(f"[bold red]Failed to save audit log: {e}[/bold red]")
+
+        self.console.print("[bold red]MISSION HALTED: Max cycles reached.[/bold red]")
