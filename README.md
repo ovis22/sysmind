@@ -13,8 +13,9 @@
 ![Status](https://img.shields.io/badge/Status-Hackathon%20Ready-success?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
+https://github.com/user-attachments/assets/30e7def3-683a-49c2-99fe-03e78d77f3cb
+
 <div align="center">
-  <video src="demo_preview.mp4" alt="SysMind Agent Analyzing Dashboard" width="100%" autoplay loop muted playsinline>Your browser does not support the video player.</video>
   <p><em>SysMind detecting a CPU spike via Gemini Vision and performing a safe remediation.</em></p>
 </div>
 
