@@ -1,2 +1,21 @@
-google-genai==0.3.0
-python-dotenv==1.0.1
+# SysMind: Dependencies
+
+# Core AI
+google-genai>=0.2.0
+
+# UI & UX
+rich>=13.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Multimodal & Data Tools
+numpy>=1.21.0
+matplotlib>=3.4.0
+pillow>=9.0.0
+
+# Container Orchestration (Local Dev)
+docker>=6.0.0
+
+# Grand Prize Audio (Voice Feedback)
+pyttsx3>=2.90

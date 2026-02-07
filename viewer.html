@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Google Antigravity | Artifact Viewer</title>
+    <style>
+        body { background-color: #1e1e1e; color: #e0e0e0; font-family: 'Roboto Mono', monospace; margin: 0; padding: 20px; }
+        .header { border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { color: #ff9800; font-weight: bold; font-size: 1.2em; }
+        .timeline { border-left: 2px solid #4285F4; margin-left: 20px; padding-left: 20px; }
+        .event { margin-bottom: 30px; position: relative; }
+        .event::before { content: ''; position: absolute; left: -26px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #4285F4; border: 2px solid #1e1e1e; }
+        .timestamp { color: #888; font-size: 0.8em; margin-bottom: 5px; }
+        .action { font-weight: bold; color: #4ecdc4; font-size: 1.1em; }
+        .args { background: #111; padding: 10px; border-radius: 4px; margin-top: 5px; font-size: 0.9em; color: #a5d6a7; }
+        .result { margin-top: 5px; color: #ccc; font-style: italic; white-space: pre-wrap; font-size: 0.85em; }
+        .upload-btn { background: #4285F4; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">/// Antigravity Artifact Viewer</div>
+        <input type="file" id="fileInput" class="upload-btn" accept=".json">
+    </div>
+
+    <div id="content">
+        <p style="color: #666;">Drag & drop 'audit_YYYYMMDD.json' here to visualize the SysMind timeline.</p>
+    </div>
+
+    <script>
+        // DATA_INJECTION_POINT
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const data = JSON.parse(event.target.result);
+                renderTimeline(data);
+            };
+            reader.readAsText(file);
+        });
+
+        function renderTimeline(data) {
+            const container = document.getElementById('content');
+            container.innerHTML = `<h3>Mission: ${data.objective}</h3><div class="timeline"></div>`;
+            const timeline = container.querySelector('.timeline');
+
+            data.history.forEach(step => {
+                const el = document.createElement('div');
+                el.className = 'event';
+                el.innerHTML = `
+                    <div class="timestamp">STEP ${step.step}</div>
+                    <div class="action">${step.tool}</div>
+                    <div class="args">${JSON.stringify(step.args)}</div>
+                    <div class="result">${step.result.substring(0, 200) + (step.result.length > 200 ? '...' : '')}</div>
+                `;
+                timeline.appendChild(el);
+            });
+            
+            // Status Badge
+            const statusColor = data.status === 'RESOLVED' ? '#1b5e20' : '#b71c1c';
+            container.innerHTML += `<div style="margin-top:20px; padding:15px; background:${statusColor}; text-align:center; font-weight:bold; border-radius: 4px;">STATUS: ${data.status}</div>`;
+        }
+    </script>
+</body>
+</html>

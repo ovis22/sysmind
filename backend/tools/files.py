@@ -4,8 +4,19 @@ class FileTools:
     """
     Titanium File Diagnostics & Reporting Tools.
     """
-    def get_read_command(self, path: str, lines: int = 10) -> str:
+    def get_read_command(self, path: str, lines: int = None) -> str:
+        """
+        Read log file with optional line limit.
+        
+        Args:
+            path: Path to file
+            lines: Number of lines to read from end. If None, reads ENTIRE file.
+                   This leverages Gemini 3's massive context window (1M+ tokens).
+        """
         safe_path = shlex.quote(path)
+        if lines is None:
+            # LONG CONTEXT SHOWCASE: Read entire file for Gemini 3
+            return f"cat {safe_path}"
         return f"tail -n {lines} {safe_path}"
 
     def get_grep_command(self, pattern: str, path: str) -> str:

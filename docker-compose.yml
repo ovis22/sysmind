@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  # The target environment we are fixing
+  sysmind-target:
+    build: ./target-node
+    container_name: sysmind-target
+    privileged: true # Required by stress-ng (chaos injector)
+    ports:
+      - "2222:22"
+    restart: always
+
+  # Optional: A dedicated runner for tools/chaos (if not running locally)
+  # For hackathon demo, we typically run python scripts locally, 
+  # but this service declares the dependencies clearly.
+  sysmind-runner:
+    image: python:3.12-slim
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /app
+    command: echo "Use this container to run python scripts if you don't have local env."

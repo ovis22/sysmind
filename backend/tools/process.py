@@ -8,20 +8,27 @@ class ProcessTools:
     def list_processes_command(self) -> str:
         """
         Returns command to list top resource-consuming processes.
+        Updated for CPU-heavy scenarios (Grand Prize Demo Optimization).
         """
-        # Using generic PS/TOP, but strategy could override if needed
-        return "ps aux --sort=-%mem | head -n 10"
+        # Changed to %cpu because the demo involves a CPU stress test!
+        return "ps aux --sort=-%cpu | head -n 15"
 
     def kill_process_command(self, pid: int, force: bool = False) -> str:
         """
         Returns command to kill a process.
-        Safe wrapper around kill.
+        Safe wrapper around kill with Shell Injection Protection.
         """
+        import shlex
         sig = "-9" if force else "-15"
-        return f"kill {sig} {pid}"
+        # Force string conversion and quote to prevent any edge-case injection
+        safe_pid = shlex.quote(str(pid))
+        return f"kill {sig} {safe_pid}"
 
     def get_process_details_command(self, pid: int) -> str:
         """
         Deep inspection of a process (Aalto OS Syllabus: /proc analysis)
         """
-        return f"cat /proc/{pid}/status"
+        import shlex
+        # Safety first: sanitize input here too
+        safe_pid = shlex.quote(str(pid))
+        return f"cat /proc/{safe_pid}/status"
